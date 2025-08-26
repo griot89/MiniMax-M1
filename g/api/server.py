@@ -7,6 +7,12 @@ import sqlite3
 from datetime import datetime
 import requests
 
+# Optional Gemini LLM
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "g_brain", "memory.sqlite")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
@@ -26,6 +32,7 @@ conn.commit()
 
 class ChatRequest(BaseModel):
     message: str
+    system: str | None = None
 
 class TTSRequest(BaseModel):
     text: str
@@ -37,11 +44,25 @@ async def health():
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    # Minimal echo with timestamp; real LLM integration later
     ts = datetime.utcnow().isoformat()
     conn.execute("INSERT INTO memory (ts, role, content) VALUES (?, ?, ?)", (ts, "user", req.message))
     conn.commit()
-    reply = f"[G] I heard: {req.message}"  # placeholder
+
+    # Choose LLM: Gemini if configured, else fallback echo
+    GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+    if genai and GEMINI_KEY:
+        try:
+            genai.configure(api_key=GEMINI_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            sysmsg = req.system or "You are G, a helpful, capable personal AI assistant with a warm, concise, optimistic style. Ask before taking impactful actions."
+            prompt = f"System: {sysmsg}\nUser: {req.message}"
+            resp = model.generate_content(prompt)
+            reply = resp.text if hasattr(resp, 'text') and resp.text else "(no content)"
+        except Exception as e:
+            reply = f"[G] (Gemini error) {e}. Echo: {req.message}"
+    else:
+        reply = f"[G] {req.message}"
+
     conn.execute("INSERT INTO memory (ts, role, content) VALUES (?, ?, ?)", (ts, "assistant", reply))
     conn.commit()
     return {"reply": reply}
