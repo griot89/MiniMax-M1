@@ -6,6 +6,11 @@ from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 import requests
+from dotenv import load_dotenv
+
+# Load environment from g/.env if present
+ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
+load_dotenv(ENV_PATH)
 
 # Optional Gemini LLM
 try:
